@@ -1,0 +1,173 @@
+# شمارش اتصالات
+#1یک گرفت اطلاعات مورد نیاز از ایتبس
+import pyodbc
+def fetch_column_from_access(db_path, table_name, column_name):
+    """
+    اتصال به پایگاه داده Access و بازگرداندن داده‌های یک ستون خاص به صورت لیست.
+
+    :param db_path: مسیر فایل Access
+    :param table_name: نام جدول از پایگاه داده Access
+    :param column_name: نام ستونی که قصد داریم اطلاعات آن را دریافت کنیم
+    :return: لیستی از مقادیر ستون انتخابی
+    """
+    # رشته اتصال به پایگاه داده Access
+    conn_str = (
+        r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};'
+        r'DBQ=' + db_path + ';'
+    )
+
+    try:
+        # اتصال به پایگاه داده Access
+        conn = pyodbc.connect(conn_str)
+        cursor = conn.cursor()
+
+        # استفاده از کروشه‌ها برای نام جدول و ستون
+        column_name_with_brackets = f"[{column_name}]"
+        table_name_with_brackets = f"[{table_name}]"
+
+        # اجرای کوئری برای خواندن اطلاعات فقط از ستون مورد نظر
+        query = f"SELECT {column_name_with_brackets} FROM {table_name_with_brackets}"
+        cursor.execute(query)
+
+        # لیستی برای ذخیره مقادیر ستون انتخابی
+        column_data = []
+
+        # دریافت مقادیر ستون و ذخیره در لیست
+        for row in cursor.fetchall():
+            column_data.append(row[0])  # هر رکورد تنها شامل یک ستون است، لذا از row[0] استفاده می‌کنیم.
+
+    except pyodbc.Error as e:
+        print("Error in connection or query execution:", e)
+        column_data = []  # در صورت خطا، لیست خالی برگردانده می‌شود
+
+    finally:
+        # بستن اتصال به دیتابیس
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return column_data
+
+# استفاده از تابع
+db_path = r'C:\Users\Mehran\Desktop\t3.accdb'
+table_name = "Frame Assignments - Section Properties"
+column_name = "Section Property"  # نام ستون مورد نظر
+b_section = fetch_column_from_access(db_path, table_name, column_name)
+b_uniqname = fetch_column_from_access(db_path,table_name,"UniqueName")
+c_uniqname = fetch_column_from_access(db_path,"Column Object Connectivity","Unique Name")
+c_end_point = fetch_column_from_access(db_path,"Column Object Connectivity","UniquePtJ")
+b_uniqname_conectivity = fetch_column_from_access(db_path,"Beam Object Connectivity","Unique Name")
+b_strat_point_conectivity = fetch_column_from_access(db_path,"Beam Object Connectivity","UniquePtI")
+b_end_point_conectivity = fetch_column_from_access(db_path,"Beam Object Connectivity","UniquePtJ")
+b_realese_summary_name = fetch_column_from_access(db_path,"Frame Assignments - Summary","UniqueName")
+b_realese_summary_releses = fetch_column_from_access(db_path,"Frame Assignments - Summary","Releases")
+
+def combine_two_list(one, two):
+    combine = [[one[i], two[i]] for i in range(min(len(one), len(two)))]  # Create a list of pairs
+    return combine  # Return the combined list
+
+
+b_uniqname_section = combine_two_list(b_uniqname,b_section)
+
+
+#2پیدا کردن تیر های که تیر به ستون هستن 
+#2-1 فانگشن که نام و اسم پویت رو بگیره وبا لست ستون ها چک کنه
+def check_point_in_list(x, point_list):
+    for i in point_list:
+        if i == x:
+            return True  # Return True if point is found
+    return False  # Return False if point is not found
+b_c_list = []
+b_cantiliver = []
+for i in range(len(b_uniqname_conectivity)):
+    st_point = b_strat_point_conectivity[i]
+    end_point = b_end_point_conectivity[i]
+    if check_point_in_list(st_point,c_end_point)==True and check_point_in_list(end_point,c_end_point)==True :
+        x = b_uniqname_conectivity[i]
+        b_c_list.append(x)
+    elif check_point_in_list(st_point,c_end_point)==True or check_point_in_list(end_point,c_end_point)==True :
+        x = b_uniqname_conectivity[i]
+        b_cantiliver.append(x)    
+
+#پیدا کرن تیر های تیر به تیر
+def remove_items(list1, list2, list3):
+    """حذف عناصر list1 و list2 از list3"""
+    return [item for item in list3 if item not in list1 and item not in list2]
+
+b_to_b_list = remove_items(b_cantiliver,b_c_list,b_uniqname_conectivity)
+#پیدا کردن اتصالات گیردار
+def find_index(name, lst):
+    try:
+        return lst.index(name)
+    except ValueError:
+        return -1  # اگر اسم در لیست پیدا نشود، -۱ برمی‌گرداند.
+b_to_c_joint = []
+for i in b_c_list:
+    x = find_index(i,b_realese_summary_name)
+    control = b_realese_summary_releses[x]
+    if control == "Yes":
+        b_to_c_joint.append(i)
+
+b_to_c_fixed = remove_items(b_to_c_joint,[],b_c_list)
+
+b_cantiliver_section = []
+b_c_fixed_section = []
+b_c_joint_Section  = []
+b_b_section = []
+for i in b_cantiliver:
+   x = find_index(i,b_uniqname)
+   sec = b_section[x]
+   b_cantiliver_section.append(sec)
+
+for i in b_to_c_fixed:
+   x = find_index(i,b_uniqname)
+   sec = b_section[x]
+   b_c_fixed_section.append(sec)   
+
+for i in b_to_c_joint:
+   x = find_index(i,b_uniqname)
+   sec = b_section[x]
+   b_c_joint_Section.append(sec)  
+
+for i in b_to_b_list:
+   x = find_index(i,b_uniqname)
+   sec = b_section[x]
+   b_b_section.append(sec)  
+
+
+# دسته بندی بر اساس مقطع و یافتن تعداد هر کدام
+
+from collections import Counter
+
+def count_duplicates(input_list):
+    # شمارش آیتم‌های تکراری در لیست
+    count_dict = Counter(input_list)
+    
+    # تبدیل دیکشنری شمارش به لیست
+    result = list(count_dict.items())
+    
+    return result
+
+def pretty_print_section_counts(section_counts, title):
+    """
+    نمایش زیباتر شمارش مقاطع به همراه عنوان دسته
+    :param section_counts: لیست شمارش مقاطع به صورت [(مقطع, تعداد)]
+    :param title: عنوان دسته‌بندی
+    """
+    print(f"--- {title} ---")
+    if section_counts:
+        # پیدا کردن طولانی‌ترین نام مقطع برای تنظیم فاصله‌ها
+        max_section_length = max(len(section) for section, _ in section_counts)
+        for section, count in section_counts:
+            # استفاده از فاصله ثابت برای تنظیم خروجی
+            print(f"section:{section.ljust(max_section_length)}, number: {count}")
+    else:
+        print("هیچ آیتمی در این دسته‌بندی یافت نشد.")
+    print("\n")  # اضافه کردن خط جدید برای فاصله بین دسته‌ها
+
+# شمارش مقاطع و چاپ آن‌ها
+pretty_print_section_counts(count_duplicates(b_cantiliver_section), ("cantilever Beams)"))
+pretty_print_section_counts(count_duplicates(b_c_fixed_section), "Fixed Beam to Column")
+pretty_print_section_counts(count_duplicates(b_c_joint_Section), "(Pinned Beam to Column)")
+pretty_print_section_counts(count_duplicates(b_b_section), "(Beam to Beam)")
